@@ -1,5 +1,12 @@
 # Fashion-MNIST
+## Requirements
 
+-`Python==3.5.5`
+-`torch==1.0.0`
+-`opencv==3.4.3.18`
+
+
+[For explaination of my models](https://docs.google.com/document/d/14UZg-HRwA7Z-02riUG5--qD6Ho5byqHksQdYgnjSVDM/edit?usp=sharing)
 
 
 
