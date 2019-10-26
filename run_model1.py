@@ -1,21 +1,6 @@
 import torch
 from torchvision import datasets, transforms
-#import helper
 import argparse
-# Define a transform to normalize the data
-transform = transforms.Compose([transforms.RandomRotation(degrees=10),
-                                transforms.Resize(28),
-                                transforms.RandomHorizontalFlip(),
-                                transforms.ToTensor(),
-                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-# Download and load the training data
-trainset = datasets.FashionMNIST('F_MNIST_data/', download=True, train=True, transform=transform)
-train_loader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=True)
-
-# Download and load the test data
-testset = datasets.FashionMNIST('F_MNIST_data/', download=True, train=False, transform=transform)
-test_loader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=True)
-
 import numpy as np
 import time
 
@@ -28,6 +13,7 @@ from torchvision import datasets, transforms
 import network
 from label_smooth import *
 from sch import *
+
 parser = argparse.ArgumentParser(description='stylenet')
 parser.add_argument('--lr', type=float, default='3e-5')
 parser.add_argument('--model',type=str,default='mynet4')
@@ -37,12 +23,27 @@ parser.add_argument('--loss',type=str, default='cxe')
 parser.add_argument('--optim',type=str, default='sgd')
 parser.add_argument('--sch',type=bool, default=False)
 parser.add_argument('--alpha', type=float, default=0.1)
+parser.add_argument('--cuda', type=bool, default=False)
 opt = parser.parse_args()
 print(opt)
 
+transform = transforms.Compose([#transforms.RandomRotation(degrees=10),
+                                #transforms.Resize(28),
+                                transforms.RandomHorizontalFlip(),
+                                transforms.ToTensor(),
+                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+# Download and load the training data
+trainset = datasets.FashionMNIST('F_MNIST_data/', download=True, train=True, transform=transform)
+train_loader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=True)
 
-use_cuda = True
+# Download and load the test data
+testset = datasets.FashionMNIST('F_MNIST_data/', download=True, train=False, transform=transform)
+test_loader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=True)
+
+
+use_cuda = opt.cuda
 device = torch.device("cuda" if use_cuda else "cpu")
+
 if opt.model=='di':
     model = network.DiNet().to(device)
 elif opt.model =='znet':
@@ -62,16 +63,19 @@ if opt.optim=='sgd':
 elif opt.optim=='adam':
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, 
                 model.parameters()), lr=1e-4)
+
 if opt.sch:
     scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, opt.epoch)
     scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=8, total_epoch=10,after_scheduler=scheduler_cosine)
 else:
     scheduler_warmup = None
 
+
 if opt.loss=='cxe':
     criterion = nn.CrossEntropyLoss()
 elif opt.loss == 'smooth':
     criterion = LabelSmoothingLoss(smoothing=opt.alpha)
+
 
 def train(model,train_loader, optimizer, epoch,device,criterion,scheduler=None):
     model.train()
@@ -114,7 +118,6 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 num = count_parameters(model)
-
 print('\n number of params {} \n'.format(num))
 
 for epoch in range(opt.epoch):

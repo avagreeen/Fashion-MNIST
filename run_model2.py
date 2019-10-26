@@ -3,7 +3,6 @@ import argparse
 from torchvision import datasets, transforms
 import numpy as np
 import time
-
 import torch
 from torch import nn
 from torch import optim
@@ -16,6 +15,7 @@ from losses import OnlineTripletLoss,OnlineTripletLoss1
 from label_smooth import *
 from sch import *
 from netvlad import NetVLAD
+
 parser = argparse.ArgumentParser(description='stylenet')
 parser.add_argument('--lr', type=float, default='3e-5')
 parser.add_argument('--num_in_features', type=int, default=128)
@@ -30,18 +30,18 @@ parser.add_argument('--sch',type=bool, default=False)
 parser.add_argument('--gamma', type=int, default=0)
 parser.add_argument('--trip_loss',type=str, default='ranking')
 parser.add_argument('--vlad',type=bool, default=False)
+parser.add_argument('--cuda', type=bool, default=True)
+
 opt = parser.parse_args()
 print(opt)
 
-# Define a transform to normalize the data
 transform = transforms.Compose([transforms.RandomHorizontalFlip(),
                                 transforms.ToTensor(),
                                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-# Download and load the training data
+
 train_dataset = datasets.FashionMNIST('F_MNIST_data/', download=True, train=True, transform=transform)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
 
-# Download and load the test data
 test_dataset = datasets.FashionMNIST('F_MNIST_data/', download=True, train=False, transform=transform)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=True)
 
@@ -50,14 +50,15 @@ from datasets import BalancedBatchSampler
 # We'll create mini batches by sampling labels that will be present in the mini batch and number of examples from each class
 train_batch_sampler = BalancedBatchSampler(train_dataset, n_classes=10, n_samples=25)
 test_batch_sampler = BalancedBatchSampler(test_dataset, n_classes=10, n_samples=25)
-cuda = True
+
+cuda = opt.cuda
 kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
 online_train_loader = torch.utils.data.DataLoader(train_dataset, batch_sampler=train_batch_sampler, **kwargs)
 online_test_loader = torch.utils.data.DataLoader(test_dataset, batch_sampler=test_batch_sampler, **kwargs)
 
 #-------------------
-use_cuda = True
-device = torch.device("cuda" if use_cuda else "cpu")
+cuda = True
+device = torch.device("cuda" if cuda else "cpu")
 num_in_features = opt.num_in_features
 if opt.fe_model=='fe1':
     embedding_net = FENet1(num_in_features)
@@ -89,6 +90,7 @@ else:
     scheduler_warmup = None
 
 margin=opt.margin
+
 if opt.loss=='cxe':
     criterion_cl = nn.CrossEntropyLoss()
 elif opt.loss == 'smooth':
@@ -100,6 +102,7 @@ elif opt.trip_loss == 'impr':
     criterion = OnlineTripletLoss1(margin, HardestNegativeTripletSelector(margin)).to(device)
 if opt.vlad:
     vlad = NetVLAD().to(device)
+
 def train(model,model_cl,triplet_train_loader,optimizer,criterion,criterion_cl,epoch,beta,scheduler=None,vlad=None):
     model.train()
     model_cl.train()
@@ -111,16 +114,13 @@ def train(model,model_cl,triplet_train_loader,optimizer,criterion,criterion_cl,e
         data = data.to(device)
         target = target.to(device)
         optimizer.zero_grad()
-        
-        #out1,out2,out3 = model(anchor,pos,neg)
+
         out1 = model(data)
         if vlad is not None:
             out1=vlad(out1)
-            #print(out1.size())   # torch.Size([250, 2048])
+            
         pred = model_cl(out1)
-        #print(pred.size(),target.size())
         loss_cl = criterion_cl(pred,target)
-        #loss = criterion(out1,out2,out3)
         loss = criterion(out1,target)
         if beta:
             #beta = np.min([0.33, (np.max([epoch-5,0])/100)**2])
